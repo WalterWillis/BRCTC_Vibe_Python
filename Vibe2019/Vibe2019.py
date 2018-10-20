@@ -1,3 +1,5 @@
+#Some code gained from https://stackoverflow.com/questions/36172101/designate-specific-cpu-for-a-process-python-multiprocessing
+
 import multiprocessing as mp
 from multiprocessing import Process, Pipe
 import os

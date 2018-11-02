@@ -78,48 +78,49 @@ def StartCoreCalculations():
 
     main()
 
+#--------------------------------------------------------------------------------------------------
 #My second test
 def StartMyCoreTest():
     ThreadList = [Thread('Thread' + str(count)) for count in range(0,12)]
     for thread in ThreadList:
         thread.Process.start()
 
-
+#--------------------------------------------------------------------------------------------------
 def QueueTest_Child(_q, c_q):
     import time
     num = 0
     for i in range(0,60): # 60 iterations,with half a second delay ~ 30 seconds
         message = ""
         block = True
-        while block:
+        while block: # Loop until a message is recieved
             try:
                 message = _q.get() # block
                 block = False
             except: pass
         print(message)
         time.sleep(.5)
-        c_q.put_nowait(" Child Recieved at cycle: {0}".format(i))
+        c_q.put_nowait(" Child Recieved at cycle: {0}".format(i)) # Reply to the sender
     c_q.put_nowait("Exit")
 
 def QueueTest(iterations):
-    q = Queue()
-    c_q = Queue()
+    q = Queue() # Main queue (sending)
+    c_q = Queue() # Child queue (recieving)
     p = Process(target=QueueTest_Child, args=(q,c_q,))
     p.start()
     count = 0
     for count in range(0, iterations):
-        if q.empty()and c_q.empty():
-            q.put_nowait("Parent sent at cycle: {0}".format(count))
-        if c_q.empty() != True:
+        if q.empty()and c_q.empty(): # If no messages are queued up
+            q.put_nowait("Parent sent at cycle: {0}".format(count)) # Display the cycle the data was sent
+        if c_q.empty() != True: # If the child has responded
             message = c_q.get()
-            if message == "Exit":
+            if message == "Exit": # End program
                 break
             try:print(message)
             except: pass
     print("Done!")
     p.join()
 
-
+#--------------------------------------------------------------------------------------------------
 
 
 class Thread:

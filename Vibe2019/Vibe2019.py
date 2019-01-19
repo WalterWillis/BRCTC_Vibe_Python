@@ -1,7 +1,6 @@
 #Some code gained from https://stackoverflow.com/questions/36172101/designate-specific-cpu-for-a-process-python-multiprocessing
 #Using Pipes will block the code if the thread runs behind, halting further data from being gathered on the main thread.
 import multiprocessing as mp
-import DataServices
 from multiprocessing import Process, Queue, Pool, Manager
 import os
 import TestStuff  as test    
@@ -16,42 +15,32 @@ except:
 # worker - the processor affinty this child works on
 # childWorker - the processor affinity that will be handed off to another child process
 # summaryQueue - a reference to the queue that the child will use.
-def ADC_THREAD(worker: int, adcQueue: Queue):
+def SPI_THREAD(worker: int, adcQueue: Queue, gyroDataQueue: Queue):
     try:
-        try:
-            ADC1 = gpiozero.spi_devices.MCP3208(0) # should be channel 0. Will need a variable, or array for all channels used.
-            print("ADC channel is channel {ADC1.channel}")
-
-        except:
-            print("Error creating ADC object")
-
         p = psutil.Process()
-        print(f"ADC Data Worker #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
+        ##print(f"ADC Data Worker #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
         time.sleep(1)
         p.cpu_affinity([worker])
-        print(f"ADC Data Worker #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
+        ##print(f"ADC Data Worker #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
+        
+        ADC_Device : list = []
+        for pin in range(0,7):
+            ADC_Device.append( gpiozero.spi_devices.MCP3208(pin) ) # should be channel 0. Will need a variable, or array for all channels used. 
+
+        for i in range(0,200):   
+            for device in ADC_Device:                             
+                print(f"ADC channel is channel {device.channel}", flush=True)
+                print(f"ADC voltage is {device.voltage} volts", flush=True)
+                print(f"ADC value is {device.value}", flush=True)
+                time.sleep(.3)
+
 
         adcQueue.put("ADC DATA!")     
            
         print("ADC Data Worker Finished")
     except Exception as ex:
-        print("Error in ADC_THREAD");
-        print(ex);
-
-def GYRO_THREAD(worker: int, gyroQueue: Queue):
-    try:
-        p = psutil.Process()
-        print(f"Gyro Data Worker #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
-        time.sleep(1)
-        p.cpu_affinity([worker])
-        print(f"Gyro Data Worker #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
-
-        gyroQueue.put("GYRO DATA")   
-            
-        print("Gyro Data Worker Finished")
-    except Exception as ex:
-        print("Error in GYRO_THREAD");
-        print(ex);
+        print("Error in ADC_THREAD")
+        print(ex)
 
 
 def ADC_HANDLER(worker: int, adcQueue: Queue, adcSummaryQueue: Queue):
@@ -66,13 +55,13 @@ def ADC_HANDLER(worker: int, adcQueue: Queue, adcSummaryQueue: Queue):
             if(adcQueue.empty() == False):
                 message = adcQueue.get()
                 adcSummaryQueue.put(message)
-                break;
+                break
             time.sleep(.5)
 
         print("ADC Handler Finished")
     except Exception as ex:
-        print("Error in ADC_Handler");
-        print(ex);
+        print("Error in ADC_Handler")
+        print(ex)
 
 def GYRO_HANDLER(worker: int, gyroQueue: Queue, gyroSummaryQueue: Queue):
     try:
@@ -86,13 +75,13 @@ def GYRO_HANDLER(worker: int, gyroQueue: Queue, gyroSummaryQueue: Queue):
             if(gyroQueue.empty() == False):
                 message = gyroQueue.get()
                 gyroSummaryQueue.put(message)
-                break;
+                break
             time.sleep(.5)
 
         print("Gyro Handler Finished")
     except Exception as ex:
-        print("Error in GYRO_Handler");
-        print(ex);
+        print("Error in GYRO_Handler")
+        print(ex)
 
 def TELEMETRY(worker: int, toSendQueue: Queue):
     pass
@@ -112,30 +101,30 @@ def main():
 
 
 if __name__ == '__main__':
-    #test.StartCoreCalculations();
+    #test.StartCoreCalculations()
     #input()
-    #test.StartMyCoreTest();
+    #test.StartMyCoreTest()
 
     #The main thread should be the data handler for the sake of efficiency and programmatic simplicity
 
     #main()
     m = Manager()
-    adcDataQueue = m.Queue();
-    gyroDataQueue = m.Queue();
-    adcSummaryQueue = m.Queue();
-    gyroSummaryQueue = m.Queue();
-    summaryQueueSender = m.Queue();
+    adcDataQueue = m.Queue()
+    gyroDataQueue = m.Queue()
+    adcSummaryQueue = m.Queue()
+    gyroSummaryQueue = m.Queue()
+    summaryQueueSender = m.Queue()
 
-    p1 = Process(target=GYRO_HANDLER, args=(1, gyroDataQueue, gyroSummaryQueue))
-    p2 = Process(target=ADC_HANDLER, args=(2, adcDataQueue, adcSummaryQueue))
-    p3 = Process(target=GYRO_THREAD, args=(3, gyroDataQueue))
-    p4 = Process(target=ADC_THREAD, args=(4, adcDataQueue))
+    process_SPI =  Process(target=SPI_THREAD, args=(1, adcDataQueue, gyroDataQueue))
 
-    try:       
+    p1 = Process(target=GYRO_HANDLER, args=(2, gyroDataQueue, gyroSummaryQueue))
+    p2 = Process(target=ADC_HANDLER, args=(3, adcDataQueue, adcSummaryQueue))
+
+    try:  
+        process_SPI.start()
         p1.start()
         p2.start()
-        p3.start()
-        p4.start()
+        
     except Exception as ex:
         print("Error in Main")
         print(ex)
@@ -161,7 +150,6 @@ if __name__ == '__main__':
 
     p1.join()
     p2.join()
-    p3.join()
-    p4.join()
+    process_SPI.join()
     print("Done")
 

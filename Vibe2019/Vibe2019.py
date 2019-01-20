@@ -18,14 +18,14 @@ except:
 def SPI_THREAD(worker: int, adcQueue: Queue, gyroDataQueue: Queue):
     try:
         p = psutil.Process()
-        ##print(f"ADC Data Worker #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
+        print(f"ADC Data Worker #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
         time.sleep(1)
         p.cpu_affinity([worker])
-        ##print(f"ADC Data Worker #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
+        print(f"ADC Data Worker #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
         
         ADC_Device : list = []
         for pin in range(0,7):
-            ADC_Device.append( gpiozero.spi_devices.MCP3208(pin) ) # should be channel 0. Will need a variable, or array for all channels used. 
+            ADC_Device.append( gpiozero.spi_devices.MCP3208(channel=pin, device=0) ) # channel is pin, device is CS.
 
         for i in range(0,200):   
             for device in ADC_Device:                             

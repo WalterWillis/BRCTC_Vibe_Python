@@ -1,6 +1,8 @@
 import gpiozero
+import gpiozero.pins.local
+from gpiozero.pins import SPI
 
-class Gyro(gpiozero.spi_devices.SPIDevice):
+class UnknownGyro(gpiozero.spi_devices.SPIDevice):
     """
     Represents an analog input device connected to SPI (serial interface).
 
@@ -36,6 +38,8 @@ class Gyro(gpiozero.spi_devices.SPIDevice):
     def __init__(self, max_voltage=3.3, **spi_args):
         self._min_value = -(2 ** bits)
         self._range = 2 ** (bits + 1) - 1
+        test = gpiozero.pins.spi.SPISoftwareBus(1,2,3)
+        test.clock
         if max_voltage <= 0:
             raise InputDeviceError('max_voltage must be positive')
         self._max_voltage = float(max_voltage)
@@ -75,6 +79,13 @@ class Gyro(gpiozero.spi_devices.SPIDevice):
         """
         return self.value * self._max_voltage
 
-    def BurstRead(self):
-        burstdata[20]
-        burstdata[0] = self.
+
+class OrigGyro(gpiozero.pins.local.LocalPiHardwareSPI):
+    def __init__(self, factory, port, device):
+        super(OrigGyro, self).__init__()
+
+
+
+class InheritedGyro(gpiozero.pins.SPI):
+    def __init__(self, factory, port, device):
+        super(InheritedGyro, self).__init__()

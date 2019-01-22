@@ -80,6 +80,10 @@ class UnknownGyro(gpiozero.spi_devices.SPIDevice):
         return self.value * self._max_voltage
 
 
+#This one looks to inherit from gpiozero.pins.SPI, like InheritedGyro
+#requires SpiDev to be initialized. Property: _interface is an instance of SpiDev
+    #SpiDev is require to use transfer
+#https://github.com/juchong/ADIS16460-Arduino-Teensy/blob/master/ADIS16460/
 class OrigGyro(gpiozero.pins.local.LocalPiHardwareSPI):
     def __init__(self, factory, port, device):
         super(OrigGyro, self).__init__()
@@ -89,3 +93,16 @@ class OrigGyro(gpiozero.pins.local.LocalPiHardwareSPI):
 class InheritedGyro(gpiozero.pins.SPI):
     def __init__(self, factory, port, device):
         super(InheritedGyro, self).__init__()
+
+def example():
+    factory = gpiozero.devices._default_pin_factory()
+    inheritedGyro = InheritedGyro(factory,0,0) # I believe port 0 is the default port
+    inheritedGyro.transfer(None) # does nothing. needs to be overwritten.
+
+    list = list(20)
+    origGyro = OrigGyro(factory,0,0)
+    origGyro._set_bits_per_word(16)
+    origGyro.clock_mode(3)
+    origGyro.lsb_first(False)
+    origGyro._interface #No library available on windows. I think members of this object will have the spi speed getter/setters
+    newlist = origGyro.transfer(list) # I think this works like the transfer function from wiring pi. Toss in a list of values, and an equal list of responses is returned.

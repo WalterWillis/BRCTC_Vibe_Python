@@ -6,6 +6,7 @@ import os
 import TestStuff  as test    
 import psutil
 import time
+import Gyro
 from functools import partial
 try:
     import gpiozero.spi_devices
@@ -34,6 +35,12 @@ def SPI_THREAD(worker: int, adcQueue: Queue, gyroDataQueue: Queue):
                 print(f"ADC value is {device.value}", flush=True)
                 time.sleep(.3)
 
+        gyro = Gyro.ADIS16460(0,1) 
+
+        #read default values
+        MSC = Gyro.regRead(Gyro.MSC_CTRL);
+        FLTR = Gyro.regRead(Gyro.FLTR_CTRL);
+        DECR = Gyro.regRead(Gyro.DEC_RATE);
 
         adcQueue.put("ADC DATA!")     
            

@@ -1,5 +1,7 @@
 import gpiozero
 import gpiozero.pins.local
+import time
+usleep = lambda x: time.sleep(x/1000000.0) #time.sleep works well-enough for microseconds above 20 uS https://stackoverflow.com/questions/1133857/how-accurate-is-pythons-time-sleep
 from gpiozero.pins import SPI
 
 class UnknownGyro(gpiozero.spi_devices.SPIDevice):
@@ -88,11 +90,160 @@ class OrigGyro(gpiozero.pins.local.LocalPiHardwareSPI):
     def __init__(self, factory, port, device):
         super(OrigGyro, self).__init__()
 
+class ADIS16460():
+     #Memory Map
+    #region
 
+    # User Register Memory Map from Table 6
+    FLASH_CNT = 0x00  #Flash memory write count
+    DIAG_STAT = 0x02  #Diagnostic and operational status
+    X_GYRO_LOW= 0x04 #X-axis gyroscope output, lower word
+    X_GYRO_OUT= 0x06 #X-axis gyroscope output, upper word
+    Y_GYRO_LOW= 0x08 #Y-axis gyroscope output, lower word
+    Y_GYRO_OUT= 0x0A #Y-axis gyroscope output, upper word
+    Z_GYRO_LOW= 0x0C #Z-axis gyroscope output, lower word
+    Z_GYRO_OUT= 0x0E #Z-axis gyroscope output, upper word
+    X_ACCL_LOW= 0x10 #X-axis accelerometer output, lower word
+    X_ACCL_OUT= 0x12 #X-axis accelerometer output, upper word
+    Y_ACCL_LOW= 0x14 #Y-axis accelerometer output, lower word
+    Y_ACCL_OUT= 0x16 #Y-axis accelerometer output, upper word
+    Z_ACCL_LOW= 0x18 #Z-axis accelerometer output, lower word
+    Z_ACCL_OUT= 0x1A #Z-axis accelerometer output, upper word
+    SMPL_CNTR = 0x1C #Sample Counter, MSC_CTRL[3:2]=11
+    TEMP_OUT = 0x1E #Temperature output (internal, not calibrated)
+    X_DELT_ANG= 0x24 #X-axis delta angle output
+    Y_DELT_ANG= 0x26 #Y-axis delta angle output
+    Z_DELT_ANG= 0x28 #Z-axis delta angle output
+    X_DELT_VEL= 0x2A #X-axis delta velocity output
+    Y_DELT_VEL= 0x2C #Y-axis delta velocity output
+    Z_DELT_VEL= 0x2E #Z-axis delta velocity output
+    MSC_CTRL = 0x32 #Miscellaneous control
+    SYNC_SCAL = 0x34 #Sync input scale control
+    DEC_RATE = 0x36 #Decimation rate control
+    FLTR_CTRL = 0x38 #Filter control, auto-null record time
+    GLOB_CMD = 0x3E #Global commands
+    XGYRO_OFF = 0x40 #X-axis gyroscope bias offset error
+    YGYRO_OFF = 0x42 #Y-axis gyroscope bias offset error
+    ZGYRO_OFF = 0x44 #Z-axis gyroscope bias offset factor
+    XACCL_OFF = 0x46 #X-axis acceleration bias offset factor
+    YACCL_OFF = 0x48 #Y-axis acceleration bias offset factor
+    ZACCL_OFF = 0x4A #Z-axis acceleration bias offset factor
+    LOT_ID1= 0x52 #Lot identification number
+    LOT_ID2= 0x54 #Lot identification number
+    PROD_ID= 0x56 #Product identifier
+    SERIAL_NUM= 0x58 #Lot-specific serial number
+    CAL_SGNTR = 0x60 #Calibration memory signature value
+    CAL_CRC= 0x62 #Calibration memory CRC values
+    CODE_SGNTR= 0x64 #Code memory signature value
+    CODE_CRC= 0x66 #Code memory CRC values
 
-class InheritedGyro(gpiozero.pins.SPI):
+    #endregion
+
+    def __init__(self, spiPort, spiCS):
+        self.SpiDevice : gpiozero.pins.local.LocalPiHardwareSPI = gpiozero.pins.local.LocalPiHardwareSPI(gpiozero.devices._default_pin_factory(), spiPort, spiCS)       
+        SetDefaultMode()
+
+    def SetDefaultMode(self):
+        time.Sleep(1) # Give the part time to start up
+        IMU.regWrite(MSC_CTRL, 0xC1)  # Enable Data Ready, set polarity
+        usleep(20)
+        IMU.regWrite(FLTR_CTRL, 0x500) # Set digital filter
+        usleep(20)
+        IMU.regWrite(DEC_RATE, 0) # Disable decimation
+        usleep(20)
+
+    def RegWrite(self, regData, data):
+        if(self.SpiDevice._get_bits_per_word() != 8):
+            self.SpiDevice._set_bits_per_word(8)
+        # Write register address and data
+        addr = (((regAddr & 0x7F) | 0x80) << 8) # Toggle sign bit, and check that the address is 8 bits
+        lowWord = (addr | (regData & 0xFF)) # OR Register address (A) with data(D) (AADD)
+        highWord = ((addr | 0x100) | ((regData >> 8) & 0xFF)) # OR Register address with data and increment address
+
+        # Split words into chars
+        highBytehighWord = (highWord >> 8)
+        lowBytehighWord = (highWord & 0xFF)
+        highBytelowWord = (lowWord >> 8)
+        lowBytelowWord = (lowWord & 0xFF)
+
+        # Write highWord to SPI bus
+        self.SpiDevice.transfer(highBytelowWord) # Write high byte from low word to SPI bus
+        self.SpiDevice.transfer(lowBytelowWord) # Write low byte from low word to SPI bus
+
+        usleep(40) # Delay to not violate read rate (16 us)
+
+        # Write lowWord to SPI bus
+        self.SpiDevice.transfer(highBytehighWord) # Write high byte from high word to SPI bus
+        self.SpiDevice.transfer(lowBytehighWord) # Write low byte from high word to SPI bus
+
+    def RegRead(self, regAddr):
+        if(self.SpiDevice._get_bits_per_word() != 8):
+            self.SpiDevice._set_bits_per_word(8)
+
+          # Write register address to be read
+        self.SpiDevice.transfer(regAddr) # Write address over SPI bus
+        self.SpiDevice.transfer(0x00) # Write 0x00 to the SPI bus fill the 16 bit transaction requirement
+
+        delayMicroseconds(40) # Delay to not violate read rate (16 us)
+
+        # Read data from requested register
+        _msbData = self.SpiDevice.transfer(0x00) # Send (0x00) and place upper byte into variable
+        _lsbData = self.SpiDevice.transfer(0x00) # Send (0x00) and place lower byte into variable
+
+        usleep(40) # Delay to not violate read rate (16 us)
+
+        _dataOut = (_msbData << 8) | (_lsbData & 0xFF) # Concatenate upper and lower bytes
+        # Shift MSB data left by 8 bits, mask LSB data with 0xFF, and OR both bits.
+
+        return _dataOut
+
+    def GetBurstData(self): #CLK rate ≤ 1 MHz. 
+        if(self.SpiDevice._get_bits_per_word() != 8):
+            self.SpiDevice._set_bits_per_word(8)
+
+        #self.SpiDevice._interface.max_speed_hz = 1000000 # May need to close and reopen spi device
+        burstdata[20]
+        burstwords[10]
+
+        burstdata[0] = self.SpiDevice.transfer(0x00) #DIAG_STAT
+        burstdata[1] = self.SpiDevice.transfer(0x00)
+        burstdata[2] = self.SpiDevice.transfer(0x00) #XGYRO_OUT
+        burstdata[3] = self.SpiDevice.transfer(0x00)
+        burstdata[4] = self.SpiDevice.transfer(0x00) #YGYRO_OUT
+        burstdata[5] = self.SpiDevice.transfer(0x00)
+        burstdata[6] = self.SpiDevice.transfer(0x00) #ZGYRO_OUT
+        burstdata[7] = self.SpiDevice.transfer(0x00)
+        burstdata[8] = self.SpiDevice.transfer(0x00) #XACCEL_OUT
+        burstdata[9] = self.SpiDevice.transfer(0x00)
+        burstdata[10] = self.SpiDevice.transfer(0x00) #YACCEL_OUT
+        burstdata[11] = self.SpiDevice.transfer(0x00)
+        burstdata[12] = self.SpiDevice.transfer(0x00) #ZACCEL_OUT
+        burstdata[13] = self.SpiDevice.transfer(0x00)
+        burstdata[14] = self.SpiDevice.transfer(0x00) #TEMP_OUT
+        burstdata[15] = self.SpiDevice.transfer(0x00)
+        burstdata[16] = self.SpiDevice.transfer(0x00) #SMPL_CNTR
+        burstdata[17] = self.SpiDevice.transfer(0x00)
+        burstdata[18] = self.SpiDevice.transfer(0x00) #CHECKSUM
+        burstdata[19] = self.SpiDevice.transfer(0x00)
+
+	    # Join bytes into words
+        burstwords[0] = ((burstdata[0] << 8) | (burstdata[1] & 0xFF)) #DIAG_STAT
+        burstwords[1] = ((burstdata[2] << 8) | (burstdata[3] & 0xFF)) #XGYRO
+        burstwords[2] = ((burstdata[4] << 8) | (burstdata[5] & 0xFF)) #YGYRO
+        burstwords[3] = ((burstdata[6] << 8) | (burstdata[7] & 0xFF)) #ZGYRO
+        burstwords[4] = ((burstdata[8] << 8) | (burstdata[9] & 0xFF)) #XACCEL
+        burstwords[5] = ((burstdata[10] << 8) | (burstdata[11] & 0xFF)) #YACCEL
+        burstwords[6] = ((burstdata[12] << 8) | (burstdata[13] & 0xFF)) #ZACCEL
+        burstwords[7] = ((burstdata[14] << 8) | (burstdata[15] & 0xFF)) #TEMP_OUT
+        burstwords[8] = ((burstdata[16] << 8) | (burstdata[17] & 0xFF)) #SMPL_CNTR
+        burstwords[9] = ((burstdata[18] << 8) | (burstdata[19] & 0xFF)) #CHECKSUM
+
+        return burstwords
+
+class InheritedGyro(gpiozero.pins.SPI):   
     def __init__(self, factory, port, device):
         super(InheritedGyro, self).__init__()
+       
 
 def example():
     factory = gpiozero.devices._default_pin_factory()

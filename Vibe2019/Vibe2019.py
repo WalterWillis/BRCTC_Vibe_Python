@@ -1,6 +1,7 @@
 #Some code gained from https://stackoverflow.com/questions/36172101/designate-specific-cpu-for-a-process-python-multiprocessing
 #Using Pipes will block the code if the thread runs behind, halting further data from being gathered on the main thread.
 import multiprocessing as mp
+import traceback
 from multiprocessing import Process, Queue, Pool, Manager
 import os
 import TestStuff  as test    
@@ -24,30 +25,33 @@ def SPI_THREAD(worker: int, adcQueue: Queue, gyroDataQueue: Queue):
         p.cpu_affinity([worker])
         print(f"ADC Data Worker #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
         
-        ADC_Device : list = []
-        for pin in range(0,7):
-            ADC_Device.append( gpiozero.spi_devices.MCP3208(channel=pin, device=0) ) # channel is pin, device is CS.
+        #ADC_Device : list = []
+        # for pin in range(0,7):
+        #     ADC_Device.append( gpiozero.spi_devices.MCP3208(channel=pin, device=0) ) # channel is pin, device is CS.
 
-        for i in range(0,200):   
-            for device in ADC_Device:                             
-                print(f"ADC channel is channel {device.channel}", flush=True)
-                print(f"ADC voltage is {device.voltage} volts", flush=True)
-                print(f"ADC value is {device.value}", flush=True)
-                time.sleep(.3)
+        # for i in range(0,200):   
+        #     for device in ADC_Device:                             
+        #         print(f"ADC channel is channel {device.channel}", flush=True)
+        #         print(f"ADC voltage is {device.voltage} volts", flush=True)
+        #         print(f"ADC value is {device.value}", flush=True)
+        #         time.sleep(.3)
 
         gyro = Gyro.ADIS16460(0,1) 
 
         #read default values
-        MSC = Gyro.regRead(Gyro.MSC_CTRL);
-        FLTR = Gyro.regRead(Gyro.FLTR_CTRL);
-        DECR = Gyro.regRead(Gyro.DEC_RATE);
+        print(f"MSC : {gyro.RegRead(gyro.MSC_CTRL)}")
+        print(f"FLTR: {gyro.RegRead(gyro.FLTR_CTRL)}")
+        print(f"DECR: {gyro.RegRead(gyro.DEC_RATE)}")
+
+        for i in range(0,50):
+            print(f"Burst Data: {gyro.GetBurstData()}")
 
         adcQueue.put("ADC DATA!")     
            
         print("ADC Data Worker Finished")
     except Exception as ex:
         print("Error in ADC_THREAD")
-        print(ex)
+        traceback.print_exc()
 
 
 def ADC_HANDLER(worker: int, adcQueue: Queue, adcSummaryQueue: Queue):
@@ -69,6 +73,7 @@ def ADC_HANDLER(worker: int, adcQueue: Queue, adcSummaryQueue: Queue):
     except Exception as ex:
         print("Error in ADC_Handler")
         print(ex)
+        print(traceback)
 
 def GYRO_HANDLER(worker: int, gyroQueue: Queue, gyroSummaryQueue: Queue):
     try:

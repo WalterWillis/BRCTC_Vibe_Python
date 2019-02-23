@@ -43,7 +43,7 @@ def SPI_THREAD(worker: int, adcQueue: Queue, gyroDataQueue: Queue):
         print(f"FLTR: {gyro.RegRead(gyro.FLTR_CTRL)}")
         print(f"DECR: {gyro.RegRead(gyro.DEC_RATE)}")
 
-        for i in range(0,50):
+        while True:
             print(f"Burst Data: {gyro.GetBurstData()}")
 
         adcQueue.put("ADC DATA!")     

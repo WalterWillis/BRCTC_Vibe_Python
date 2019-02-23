@@ -153,8 +153,8 @@ class ADIS16460():
         usleep(20)
 
     def RegWrite(self, regAddr, regData):
-        if(self.SpiDevice._get_bits_per_word() != 8):
-            self.SpiDevice._set_bits_per_word(8)
+        # if(self.SpiDevice._get_bits_per_word() != 16):
+        #     self.SpiDevice._set_bits_per_word(16)
         # Write register address and data
         addr = (((regAddr[0] & 0x7F) | 0x80) << 8) # Toggle sign bit, and check that the address is 8 bits
         lowWord = (addr | (regData & 0xFF)) # OR Register address (A) with data(D) (AADD)
@@ -167,36 +167,32 @@ class ADIS16460():
         lowBytelowWord = [(lowWord & 0xFF)]
 
         # Write highWord to SPI bus
-        self.SpiDevice.transfer(highBytelowWord) # Write high byte from low word to SPI bus
-        self.SpiDevice.transfer(lowBytelowWord) # Write low byte from low word to SPI bus
+        self.SpiDevice.transfer(regAddr) # Write high byte from low word to SPI bus
+        self.SpiDevice.transfer([regData]) # Write low byte from low word to SPI bus
 
         usleep(40) # Delay to not violate read rate (16 us)
 
         # Write lowWord to SPI bus
-        self.SpiDevice.transfer(highBytehighWord) # Write high byte from high word to SPI bus
-        self.SpiDevice.transfer(lowBytehighWord) # Write low byte from high word to SPI bus
+        #self.SpiDevice.transfer(highBytehighWord) # Write high byte from high word to SPI bus
+        #self.SpiDevice.transfer(lowBytehighWord) # Write low byte from high word to SPI bus
 
     def RegRead(self, regAddr):
-        if(self.SpiDevice._get_bits_per_word() != 8):
-            self.SpiDevice._set_bits_per_word(8)
+        # if(self.SpiDevice._get_bits_per_word() != 16):
+        #     self.SpiDevice._set_bits_per_word(16)
 
           # Write register address to be read
         self.SpiDevice.transfer(regAddr) # Write address over SPI bus
-        self.SpiDevice.transfer([0x00]) # Write 0x00 to the SPI bus fill the 16 bit transaction requirement
+        #self.SpiDevice.transfer([0x00]) # Write 0x00 to the SPI bus fill the 16 bit transaction requirement
 
         usleep(40) # Delay to not violate read rate (16 us)
 
         # Read data from requested register
-        _msbData = self.SpiDevice.transfer([0x00]) # Send (0x00) and place upper byte into variable
-        _lsbData = self.SpiDevice.transfer([0x00]) # Send (0x00) and place lower byte into variable
-        # print(_msbData)
-        # print(_lsbData)
-        usleep(40) # Delay to not violate read rate (16 us)
+       
 
-        _dataOut = (_msbData[0] << 8) | (_lsbData[0] & 0xFF) # Concatenate upper and lower bytes
+     
         # Shift MSB data left by 8 bits, mask LSB data with 0xFF, and OR both bits.
 
-        return _dataOut
+        return self.SpiDevice.transfer([0x00])
 
     def GetBurstData(self): #CLK rate ≤ 1 MHz. 
         if(self.SpiDevice._get_bits_per_word() != 8):
@@ -216,30 +212,30 @@ class ADIS16460():
         burstdata.append(self.SpiDevice.transfer([0x00]))
         burstdata.append(self.SpiDevice.transfer([0x00])) #XACCEL_OUT
         burstdata.append(self.SpiDevice.transfer([0x00]))
-        burstdata.append(self.SpiDevice.transfer([0x00])) #YACCEL_OUT
-        burstdata.append(self.SpiDevice.transfer([0x00]))
-        burstdata.append(self.SpiDevice.transfer([0x00])) #ZACCEL_OUT
-        burstdata.append(self.SpiDevice.transfer([0x00]))
-        burstdata.append(self.SpiDevice.transfer([0x00])) #TEMP_OUT
-        burstdata.append(self.SpiDevice.transfer([0x00]))
-        burstdata.append(self.SpiDevice.transfer([0x00])) #SMPL_CNTR
-        burstdata.append(self.SpiDevice.transfer([0x00]))
-        burstdata.append(self.SpiDevice.transfer([0x00])) #CHECKSUM
-        burstdata.append(self.SpiDevice.transfer([0x00]))
+        # burstdata.append(self.SpiDevice.transfer([0x00])) #YACCEL_OUT
+        # burstdata.append(self.SpiDevice.transfer([0x00]))
+        # burstdata.append(self.SpiDevice.transfer([0x00])) #ZACCEL_OUT
+        # burstdata.append(self.SpiDevice.transfer([0x00]))
+        # burstdata.append(self.SpiDevice.transfer([0x00])) #TEMP_OUT
+        # burstdata.append(self.SpiDevice.transfer([0x00]))
+        # burstdata.append(self.SpiDevice.transfer([0x00])) #SMPL_CNTR
+        # burstdata.append(self.SpiDevice.transfer([0x00]))
+        # burstdata.append(self.SpiDevice.transfer([0x00])) #CHECKSUM
+        # burstdata.append(self.SpiDevice.transfer([0x00]))
 
 	    # Join bytes into words
-        burstwords.append(((burstdata[0][0] << 8) | (burstdata[1][0] & 0xFF))) #DIAG_STAT
-        burstwords.append(((burstdata[2][0] << 8) | (burstdata[3][0] & 0xFF))) #XGYRO
-        burstwords.append(((burstdata[4][0] << 8) | (burstdata[5][0] & 0xFF))) #YGYRO
-        burstwords.append(((burstdata[6][0] << 8) | (burstdata[7][0] & 0xFF))) #ZGYRO
-        burstwords.append(((burstdata[8][0] << 8) | (burstdata[9][0] & 0xFF))) #XACCEL
-        burstwords.append(((burstdata[10][0] << 8) | (burstdata[11][0] & 0xFF))) #YACCEL
-        burstwords.append(((burstdata[12][0] << 8) | (burstdata[13][0] & 0xFF))) #ZACCEL
-        burstwords.append(((burstdata[14][0] << 8) | (burstdata[15][0] & 0xFF))) #TEMP_OUT
-        burstwords.append(((burstdata[16][0] << 8) | (burstdata[17][0] & 0xFF))) #SMPL_CNTR
-        burstwords.append(((burstdata[18][0] << 8) | (burstdata[19][0] & 0xFF))) #CHECKSUM
+        # burstwords.append(((burstdata[0][0] << 8) | (burstdata[1][0] & 0xFF))) #DIAG_STAT
+        # burstwords.append(((burstdata[2][0] << 8) | (burstdata[3][0] & 0xFF))) #XGYRO
+        # burstwords.append(((burstdata[4][0] << 8) | (burstdata[5][0] & 0xFF))) #YGYRO
+        # burstwords.append(((burstdata[6][0] << 8) | (burstdata[7][0] & 0xFF))) #ZGYRO
+        # burstwords.append(((burstdata[8][0] << 8) | (burstdata[9][0] & 0xFF))) #XACCEL
+        # burstwords.append(((burstdata[10][0] << 8) | (burstdata[11][0] & 0xFF))) #YACCEL
+        # burstwords.append(((burstdata[12][0] << 8) | (burstdata[13][0] & 0xFF))) #ZACCEL
+        # burstwords.append(((burstdata[14][0] << 8) | (burstdata[15][0] & 0xFF))) #TEMP_OUT
+        # burstwords.append(((burstdata[16][0] << 8) | (burstdata[17][0] & 0xFF))) #SMPL_CNTR
+        # burstwords.append(((burstdata[18][0] << 8) | (burstdata[19][0] & 0xFF))) #CHECKSUM
 
-        return burstwords
+        return burstdata
 
 class InheritedGyro(gpiozero.pins.SPI):   
     def __init__(self, factory, port, device):

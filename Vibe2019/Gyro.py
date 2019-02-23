@@ -195,13 +195,13 @@ class ADIS16460():
         return self.SpiDevice.transfer([0x00])
 
     def GetBurstData(self): #CLK rate ≤ 1 MHz. 
-        if(self.SpiDevice._get_bits_per_word() != 8):
-            self.SpiDevice._set_bits_per_word(8)
 
+        
         #self.SpiDevice._interface.max_speed_hz = 1000000 # May need to close and reopen spi device
         burstdata = []
         burstwords = []
 
+        self.SpiDevice.transfer([0x3E00])
         burstdata.append(self.SpiDevice.transfer([0x00])) #DIAG_STAT
         burstdata.append(self.SpiDevice.transfer([0x00]))
         burstdata.append(self.SpiDevice.transfer([0x00])) #XGYRO_OUT

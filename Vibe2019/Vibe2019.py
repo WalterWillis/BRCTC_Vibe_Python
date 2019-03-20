@@ -44,10 +44,8 @@ def SPI_THREAD(worker: int, adcQueue: Queue, gyroDataQueue: Queue):
         print(f"DECR: {gyro.RegRead(gyro.DEC_RATE)}")
 
         while True:
-            burstArray = gyro.GetBurstData()
-            print(f"Burst Data: {burstArray}")
-            print(f"Checksums match: {gyro.GetChecksum(burstArray)}")
-            gyro.PrintStuff(burstArray)
+            burstArray = gyro.GetBurstData()           
+            gyroDataQueue.put(burstArray)
             time.sleep(1)
             
 
@@ -80,7 +78,7 @@ def ADC_HANDLER(worker: int, adcQueue: Queue, adcSummaryQueue: Queue):
         print(ex)
         print(traceback)
 
-def GYRO_HANDLER(worker: int, gyroQueue: Queue, gyroSummaryQueue: Queue):
+def GYRO_HANDLER(worker: int, gyroDataQueue: Queue, gyroSummaryQueue: Queue):
     try:
         p = psutil.Process()
         print(f"Gyro Data Handler #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
@@ -90,7 +88,10 @@ def GYRO_HANDLER(worker: int, gyroQueue: Queue, gyroSummaryQueue: Queue):
 
         while(True):
             if(gyroQueue.empty() == False):
-                message = gyroQueue.get()
+                message = gyroDataQueue.get()
+                print(f"Burst Data: {message}", flush=True)
+                print(f"Checksums match: {Gyro.GetChecksum(message)}", flush=True)
+                Gyro.PrintStuff(message)
                 gyroSummaryQueue.put(message)
                 break
             time.sleep(.5)

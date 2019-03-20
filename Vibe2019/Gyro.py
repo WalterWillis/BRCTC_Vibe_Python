@@ -191,38 +191,14 @@ class ADIS16460():
         return self.SpiDevice.transfer([0x00,0x00])
 
     def GetBurstData(self): #CLK rate ≤ 1 MHz.              
-        
-        #self.SpiDevice._interface.max_speed_hz = 1000000 # May need to close and reopen spi device
         burstdata = []
         burstwords = []
 
-        burstTrigger = [0x3E, 0x00, 0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00]
+        burstTrigger = [0x3E,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00]
 
         burstdata = self.SpiDevice.transfer(burstTrigger)
 
-        print(f"burst data: {burstdata}")
-        # burstdata.append(self.SpiDevice.transfer([0x00, 0x00])) #DIAG_STAT
-        # burstdata.append(self.SpiDevice.transfer([0x00, 0x00]))
-        # burstdata.append(self.SpiDevice.transfer([0x00, 0x00])) #XGYRO_OUT
-        # burstdata.append(self.SpiDevice.transfer([0x00, 0x00]))
-        # burstdata.append(self.SpiDevice.transfer([0x00, 0x00])) #YGYRO_OUT
-        # burstdata.append(self.SpiDevice.transfer([0x00, 0x00]))
-        # burstdata.append(self.SpiDevice.transfer([0x00, 0x00])) #ZGYRO_OUT
-        # burstdata.append(self.SpiDevice.transfer([0x00, 0x00]))
-        # burstdata.append(self.SpiDevice.transfer([0x00, 0x00])) #XACCEL_OUT
-        # burstdata.append(self.SpiDevice.transfer([0x00, 0x00]))
-        # burstdata.append(self.SpiDevice.transfer(0x00)) #YACCEL_OUT
-        # burstdata.append(self.SpiDevice.transfer(0x00))
-        # burstdata.append(self.SpiDevice.transfer(0x00)) #ZACCEL_OUT
-        # burstdata.append(self.SpiDevice.transfer(0x00))
-        # burstdata.append(self.SpiDevice.transfer(0x00)) #TEMP_OUT
-        # burstdata.append(self.SpiDevice.transfer(0x00))
-        # burstdata.append(self.SpiDevice.transfer(0x00)) #SMPL_CNTR
-        # burstdata.append(self.SpiDevice.transfer(0x00))
-        # burstdata.append(self.SpiDevice.transfer(0x00)) #CHECKSUM
-        # burstdata.append(self.SpiDevice.transfer(0x00))
-
-	    # Join bytes into words
+        #print(f"burst data: {burstdata}")
 
         burstwords.append(((burstdata[2] << 8) | (burstdata[3] & 0xFF))) #DIAG_STAT
         burstwords.append(((burstdata[4] << 8) | (burstdata[5] & 0xFF))) #XGYRO
@@ -235,36 +211,40 @@ class ADIS16460():
         burstwords.append(((burstdata[18] << 8) | (burstdata[19] & 0xFF))) #SMPL_CNTR
         burstwords.append(((burstdata[20] << 8) | (burstdata[21] & 0xFF))) #CHECKSUM
 
-        print(f"burst words: {burstwords}")
+        #print(f"burst words: {burstwords}")
 
         return burstwords
-    def GetChecksum(self, burstArray):
-        sum = 0
-        for i in range(0,9):	
-            sum += (burstArray[i] & 0xFF)
-            sum += ((burstArray[i] >> 8) & 0xFF)
 
-        print(f"sum vs checksum: {sum}, {burstArray[9]}")
 
-        if sum == burstArray[9]:
-            return True
-        else:
-           return False
 
-    def PrintStuff(self, burstArray):
-        print(f"Gyro X Axis: {burstArray[1] * .005}")
-        print(f"Gyro Y Axis: {burstArray[2] * .005}")
-        print(f"Gyro Z Axis: {burstArray[3] * .005}")
+def GetChecksum(self, burstArray):
+    sum = 0
+    for i in range(0,9):	
+        sum += (burstArray[i] & 0xFF)
+        sum += ((burstArray[i] >> 8) & 0xFF)
 
-        print(f"X Axis: {burstArray[4] * .00025}")
-        print(f"Y Axis: {burstArray[5] * .00025}")
-        print(f"Z Axis: {burstArray[6] * .00025}")
+    print(f"sum vs checksum: {sum}, {burstArray[9]}")
+
+    if sum == burstArray[9]:
+        return True
+    else:
+        return False
+
+
+def PrintGyroStuff(burstArray):
+    print(f"Gyro X Axis: {burstArray[1] * .005}")
+    print(f"Gyro Y Axis: {burstArray[2] * .005}")
+    print(f"Gyro Z Axis: {burstArray[3] * .005}")
+
+    print(f"X Axis: {burstArray[4] * .00025}")
+    print(f"Y Axis: {burstArray[5] * .00025}")
+    print(f"Z Axis: {burstArray[6] * .00025}")
         
 
 
-class InheritedGyro(gpiozero.pins.SPI):   
-    def __init__(self, factory, port, device):
-        super(InheritedGyro, self).__init__()
+#class InheritedGyro(gpiozero.pins.SPI):   
+#    def __init__(self, factory, port, device):
+#        super(InheritedGyro, self).__init__()
        
 
 def example():

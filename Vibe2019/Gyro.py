@@ -251,7 +251,7 @@ class ADIS16460():
         else:
            return False
 
-    def PrintStuff(self, burstArray):
+    def PrintValues(self, burstArray):
         print(f"Gyro X Axis: {burstArray[1] * .005}")
         print(f"Gyro Y Axis: {burstArray[2] * .005}")
         print(f"Gyro Z Axis: {burstArray[3] * .005}")

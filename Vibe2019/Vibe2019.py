@@ -25,33 +25,36 @@ def SPI_THREAD(worker: int, adcQueue: Queue, gyroDataQueue: Queue):
         p.cpu_affinity([worker])
         print(f"ADC Data Worker #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
         
-        #ADC_Device : list = []
-        # for pin in range(0,7):
-        #     ADC_Device.append( gpiozero.spi_devices.MCP3208(channel=pin, device=0) ) # channel is pin, device is CS.
+        ADC_Device : list = [] # List of devices that are really just representative of the pins on the ADC
+        for pin in range(0,3): # Loop through each available pin
+            ADC_Device.append( gpiozero.spi_devices.MCP3208(channel=pin, device=0) ) # channel is pin, device is CS.
 
-        # for i in range(0,200):   
-        #     for device in ADC_Device:                             
-        #         print(f"ADC channel is channel {device.channel}", flush=True)
-        #         print(f"ADC voltage is {device.voltage} volts", flush=True)
-        #         print(f"ADC value is {device.value}", flush=True)
-        #         time.sleep(.3)
-
-        gyro = Gyro.ADIS16460(0,1) 
+        gyro = Gyro.ADIS16460(spiPort=0, spiCS=1) 
 
         #read default values
-        print(f"MSC : {gyro.RegRead(gyro.MSC_CTRL)}")
+        print(f"MSC: {gyro.RegRead(gyro.MSC_CTRL)}")
         print(f"FLTR: {gyro.RegRead(gyro.FLTR_CTRL)}")
         print(f"DECR: {gyro.RegRead(gyro.DEC_RATE)}")
 
         while True:
-            burstArray = gyro.GetBurstData()
-            print(f"Burst Data: {burstArray}")
-            print(f"Checksums match: {gyro.GetChecksum(burstArray)}")
-            gyro.PrintStuff(burstArray)
-            time.sleep(1)
+            ADC_Values : list = []
+            for device in ADC_Device:  # Print values per device  
+                values : list = []
+                values.append(device.value, device.voltage, device._channel) # values, and the channel id for matching
+       
+
             
 
-        adcQueue.put("ADC DATA!")     
+            burstArray = gyro.GetBurstData() # Aquire array
+            print(f"Burst Data: {burstArray}") # Print array as string
+            print(f"Checksums match: {gyro.GetChecksum(burstArray)}") # Verify checksum value
+            gyro.PrintValues(burstArray) # Print gyro values after scaling
+            
+            if(adcQueue.qsize() < adcQueue.maxsize):
+                adcQueue.put(ADC_Values)     
+
+            if(gyroDataQueue.qsize() < gyroDataQueue.maxsize):
+                gyroDataQueue.put(burstArray)
            
         print("ADC Data Worker Finished")
     except Exception as ex:
@@ -126,11 +129,11 @@ if __name__ == '__main__':
 
     #main()
     m = Manager()
-    adcDataQueue = m.Queue()
-    gyroDataQueue = m.Queue()
-    adcSummaryQueue = m.Queue()
-    gyroSummaryQueue = m.Queue()
-    summaryQueueSender = m.Queue()
+    adcDataQueue = m.Queue(maxsize=200)
+    gyroDataQueue = m.Queue(maxsize=200)
+    adcSummaryQueue = m.Queue(maxsize=200)
+    gyroSummaryQueue = m.Queue(maxsize=200)
+    summaryQueueSender = m.Queue(maxsize=200)
 
     process_SPI =  Process(target=SPI_THREAD, args=(1, adcDataQueue, gyroDataQueue))
 

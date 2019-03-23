@@ -41,14 +41,14 @@ def SPI_THREAD(worker: int, adcQueue: Queue, gyroDataQueue: Queue):
             for device in ADC_Device:  # Print values per device  
                 values : list = []
                 values.append(device.value, device.voltage, device._channel) # values, and the channel id for matching
-       
+ 
+            burstArray = gyro.GetBurstData()           
+            gyroDataQueue.put(burstArray)
+            time.sleep(1)
 
-            
-
-            burstArray = gyro.GetBurstData() # Aquire array
-            print(f"Burst Data: {burstArray}") # Print array as string
-            print(f"Checksums match: {gyro.GetChecksum(burstArray)}") # Verify checksum value
-            gyro.PrintValues(burstArray) # Print gyro values after scaling
+            #print(f"Burst Data: {burstArray}") # Print array as string
+            #print(f"Checksums match: {gyro.GetChecksum(burstArray)}") # Verify checksum value
+            #gyro.PrintValues(burstArray) # Print gyro values after scaling
             
             if(adcQueue.qsize() < adcQueue.maxsize):
                 adcQueue.put(ADC_Values)     
@@ -83,7 +83,7 @@ def ADC_HANDLER(worker: int, adcQueue: Queue, adcSummaryQueue: Queue):
         print(ex)
         print(traceback)
 
-def GYRO_HANDLER(worker: int, gyroQueue: Queue, gyroSummaryQueue: Queue):
+def GYRO_HANDLER(worker: int, gyroDataQueue: Queue, gyroSummaryQueue: Queue):
     try:
         p = psutil.Process()
         print(f"Gyro Data Handler #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
@@ -93,7 +93,10 @@ def GYRO_HANDLER(worker: int, gyroQueue: Queue, gyroSummaryQueue: Queue):
 
         while(True):
             if(gyroQueue.empty() == False):
-                message = gyroQueue.get()
+                message = gyroDataQueue.get()
+                print(f"Burst Data: {message}", flush=True)
+                print(f"Checksums match: {Gyro.GetChecksum(message)}", flush=True)
+                Gyro.PrintStuff(message)
                 gyroSummaryQueue.put(message)
                 break
             time.sleep(.5)

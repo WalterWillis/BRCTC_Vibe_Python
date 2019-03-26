@@ -29,6 +29,7 @@
     <Compile Include="TestStuff.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="UART test.py" />
     <Compile Include="Vibe2019.py" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />

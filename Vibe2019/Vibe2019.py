@@ -8,6 +8,9 @@ import TestStuff  as test
 import psutil
 import time
 import Gyro
+import pickle
+import serial
+import datetime
 from functools import partial
 try:
     import gpiozero.spi_devices
@@ -61,118 +64,66 @@ def SPI_THREAD(worker: int, adcQueue: Queue, gyroDataQueue: Queue):
         print("Error in ADC_THREAD")
         traceback.print_exc()
 
-
-def ADC_HANDLER(worker: int, adcQueue: Queue, adcSummaryQueue: Queue):
-    try:
-        p = psutil.Process()
-        print(f"ADC Data Handler #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
-        time.sleep(1)
-        p.cpu_affinity([worker])
-        print(f"ADC Data Handler #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
-
-        while(True):
-            if(adcQueue.empty() == False):
-                message = adcQueue.get()
-                adcSummaryQueue.put(message)
-                break
-            time.sleep(.5)
-
-        print("ADC Handler Finished")
-    except Exception as ex:
-        print("Error in ADC_Handler")
-        print(ex)
-        print(traceback)
-
-def GYRO_HANDLER(worker: int, gyroDataQueue: Queue, gyroSummaryQueue: Queue):
-    try:
-        p = psutil.Process()
-        print(f"Gyro Data Handler #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
-        time.sleep(1)
-        p.cpu_affinity([worker])
-        print(f"Gyro Data Handler #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
-
-        while(True):
-            if(gyroQueue.empty() == False):
-                message = gyroDataQueue.get()
-                print(f"Burst Data: {message}", flush=True)
-                print(f"Checksums match: {Gyro.GetChecksum(message)}", flush=True)
-                Gyro.PrintStuff(message)
-                gyroSummaryQueue.put(message)
-                break
-            time.sleep(.5)
-
-        print("Gyro Handler Finished")
-    except Exception as ex:
-        print("Error in GYRO_Handler")
-        print(ex)
+def SEND_TELEM(list):
+    #pass list to function
+    #encode list as string
+    #send data via serial
+    ser = serial.Serial("/dev/serial0", 57600, timeout=3.0)
+    telemString = Str(list).encode()
+    ser.write(telemString)
 
 def TELEMETRY(worker: int, toSendQueue: Queue):
+    #Check each queue to see if they have a size of 4000 or greater
+    #If so, send the data via telemetry at a maximum of 4000 data points
+    #priority: ADC first, Gyro second
+    telemList : list = [4000]
+    telemString = ""
+    cTime : datetime = datetime.datetime.now()
+    crashNum : int = 0
+    delta : datetime.timedelta
+    while True:
+        try:
+            if telemList.len == 4000:
+                try:
+                    SEND_TELEM(telemList)
+                    telemList = [4000]
+                except:
+                    pass
+            else:
+                telemList.append(adcQueue.get())
+        except:
+            #store the number of crashes            
+            crashNum += 1
+        finally:
+            #check current time against a time variable
+            #every five minutes replace the value of the time variable
+            #send the number of crashes every 5 minutes
+            delta = datetime.datetime.now() - cTime
+            if delta.total_seconds() >= 300:
+                print("Telemetry Thread has crashed ", crashNum, " times since thread began.")
+                cTime = datetime.datetime.now()
+
+                #make a log file and include time
+    
     pass
-
-#--------Test Stuff-------
-def func(a, b):
-    print("hi")
-    return a + b
-
-def main():
-    a_args = [1,2,3]
-    second_arg = 1
-    with Pool() as pool:
-        L = pool.starmap(func, [(1, 1), (2, 1), (3, 1)])
-        print(L)
-#--------------------------
 
 
 if __name__ == '__main__':
-    #test.StartCoreCalculations()
-    #input()
-    #test.StartMyCoreTest()
-
-    #The main thread should be the data handler for the sake of efficiency and programmatic simplicity
-
-    #main()
     m = Manager()
-    adcDataQueue = m.Queue(maxsize=200)
-    gyroDataQueue = m.Queue(maxsize=200)
-    adcSummaryQueue = m.Queue(maxsize=200)
-    gyroSummaryQueue = m.Queue(maxsize=200)
-    summaryQueueSender = m.Queue(maxsize=200)
+    adcDataQueue = m.Queue(maxsize=6000)
+    gyroDataQueue = m.Queue(maxsize=6000)
 
     process_SPI =  Process(target=SPI_THREAD, args=(1, adcDataQueue, gyroDataQueue))
-
-    p1 = Process(target=GYRO_HANDLER, args=(2, gyroDataQueue, gyroSummaryQueue))
-    p2 = Process(target=ADC_HANDLER, args=(3, adcDataQueue, adcSummaryQueue))
+    process_Telemetry =  Process(target=TELEMETRY, args=(2, adcDataQueue, gyroDataQueue))
 
     try:  
         process_SPI.start()
-        p1.start()
-        p2.start()
+        process_Telemetry.start()
         
     except Exception as ex:
         print("Error in Main")
         print(ex)
 
-    #Breaks the loop
-    gyroReady = False
-    adcReady = False
-
-    while(not gyroReady and not adcReady):
-
-        gyroReady = gyroSummaryQueue.empty()
-        adcReady = adcSummaryQueue.empty()
-
-        if(gyroReady):
-            print("Message from Gyro Summary Queue")
-            print(gyroSummaryQueue.get())
-
-        if(adcReady):
-            print("Message from ADC Summary Queue")
-            print(adcSummaryQueue.get())       
-
-        time.sleep(.5)
-
-    p1.join()
-    p2.join()
     process_SPI.join()
-    print("Done")
+    process_Telemetry.join()
 

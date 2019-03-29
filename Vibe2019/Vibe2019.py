@@ -20,7 +20,7 @@ except:
 # worker - the processor affinty this child works on
 # childWorker - the processor affinity that will be handed off to another child process
 # summaryQueue - a reference to the queue that the child will use.
-def SPI_THREAD(worker: int, adcQueue: Queue, gyroDataQueue: Queue):
+def SPI_THREAD(worker: int, dataQueue: Queue):
     try:
         p = psutil.Process()
         print(f"ADC Data Worker #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
@@ -35,35 +35,34 @@ def SPI_THREAD(worker: int, adcQueue: Queue, gyroDataQueue: Queue):
         gyro = Gyro.ADIS16460(spiPort=0, spiCS=1) 
 
         #read default values
-        print(f"MSC: {gyro.RegRead(gyro.MSC_CTRL)}")
+        print( f"MSC: {gyro.RegRead(gyro.MSC_CTRL)}")
         print(f"FLTR: {gyro.RegRead(gyro.FLTR_CTRL)}")
         print(f"DECR: {gyro.RegRead(gyro.DEC_RATE)}")
 
         while True:
-            ADC_Values : list = []
+            Loop_Values : list = []
             for device in ADC_Device:  # Print values per device  
                 values : list = []
-                values.append(device.value, device.voltage, device._channel) # values, and the channel id for matching
+                values.append(device.value, device.voltage, device._channel, datetime.datetime.now().time()) # values, and the channel id for matching
+                Loop_Values += values
  
-            burstArray = gyro.GetBurstData()           
-            gyroDataQueue.put(burstArray)
-            time.sleep(1)
+            Loop_Values + gyro.GetBurstData() #[0, 1, 2, 3, 4] + [5, 6, 7, 8, 9] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+            if(dataQueue.qsize() < dataQueue.maxsize):
+                dataQueue.put(values)
+            else:
+                print("SPI Data Queue is full!")
 
             #print(f"Burst Data: {burstArray}") # Print array as string
             #print(f"Checksums match: {gyro.GetChecksum(burstArray)}") # Verify checksum value
             #gyro.PrintValues(burstArray) # Print gyro values after scaling
-            
-            if(adcQueue.qsize() < adcQueue.maxsize):
-                adcQueue.put(ADC_Values)     
-
-            if(gyroDataQueue.qsize() < gyroDataQueue.maxsize):
-                gyroDataQueue.put(burstArray)
            
         print("ADC Data Worker Finished")
     except Exception as ex:
         print("Error in ADC_THREAD")
         traceback.print_exc()
 
+
+#REMOVE THIS FUNCTION. Serial line should be instantiated once!
 def SEND_TELEM(list):
     #pass list to function
     #encode list as string
@@ -72,7 +71,7 @@ def SEND_TELEM(list):
     telemString = Str(list).encode()
     ser.write(telemString)
 
-def TELEMETRY(worker: int, toSendQueue: Queue):
+def TELEMETRY(worker: int, dataQueue: Queue):
     #Check each queue to see if they have a size of 4000 or greater
     #If so, send the data via telemetry at a maximum of 4000 data points
     #priority: ADC first, Gyro second
@@ -90,7 +89,7 @@ def TELEMETRY(worker: int, toSendQueue: Queue):
                 except:
                     pass
             else:
-                telemList.append(adcQueue.get())
+                telemList.append(dataQueue.get())
         except:
             #store the number of crashes            
             crashNum += 1
@@ -110,20 +109,27 @@ def TELEMETRY(worker: int, toSendQueue: Queue):
 
 if __name__ == '__main__':
     m = Manager()
-    adcDataQueue = m.Queue(maxsize=6000)
-    gyroDataQueue = m.Queue(maxsize=6000)
+    dataQueue : m.Queue = m.Queue(maxsize = 6000)
 
-    process_SPI =  Process(target=SPI_THREAD, args=(1, adcDataQueue, gyroDataQueue))
-    process_Telemetry =  Process(target=TELEMETRY, args=(2, adcDataQueue, gyroDataQueue))
+    process_SPI =  Process(target=SPI_THREAD, args=(1, dataQueue))
+    process_Telemetry =  Process(target=TELEMETRY, args=(2, dataQueue))
 
-    try:  
-        process_SPI.start()
-        process_Telemetry.start()
-        
-    except Exception as ex:
-        print("Error in Main")
-        print(ex)
+    while True:
+        try:  
+            process_SPI.start()
+            process_Telemetry.start()
+            process_SPI.join()
+            process_Telemetry.join()
+        except Exception as ex:
+            print("Error in Main")
+            print(ex)
+            try:
+                if(process_SPI.is_alive()):
+                    process_SPI.terminate()
+                if(process_Telemetry.is_alive()):
+                    process_Telemetry.terminate()
+            except:
+                print("Error terminating processes")
 
-    process_SPI.join()
-    process_Telemetry.join()
+   
 

@@ -197,7 +197,7 @@ class ADIS16460():
         burstTrigger = [0x3E,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00]
 
         burstdata = self.SpiDevice.transfer(burstTrigger)
-
+        cTime = datetime.datetime.now().time()
         #print(f"burst data: {burstdata}")
 
         burstwords.append(((burstdata[2] << 8) | (burstdata[3] & 0xFF))) #DIAG_STAT
@@ -210,6 +210,7 @@ class ADIS16460():
         burstwords.append(((burstdata[16] << 8) | (burstdata[17] & 0xFF))) #TEMP_OUT
         burstwords.append(((burstdata[18] << 8) | (burstdata[19] & 0xFF))) #SMPL_CNTR
         burstwords.append(((burstdata[20] << 8) | (burstdata[21] & 0xFF))) #CHECKSUM
+        burstwords.append(cTime)
 
         #print(f"burst words: {burstwords}")
 

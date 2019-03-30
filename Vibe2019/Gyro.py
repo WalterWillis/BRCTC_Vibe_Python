@@ -4,6 +4,7 @@ import time
 import spidev
 usleep = lambda x: time.sleep(x/1000000.0) #time.sleep works well-enough for microseconds above 20 uS https://stackoverflow.com/questions/1133857/how-accurate-is-pythons-time-sleep
 from gpiozero.pins import SPI
+from ctypes import c_short, c_byte
 
 class UnknownGyro(gpiozero.spi_devices.SPIDevice):
     """
@@ -191,8 +192,8 @@ class ADIS16460():
         return self.SpiDevice.transfer([0x00,0x00])
 
     def GetBurstData(self): #CLK rate ≤ 1 MHz.              
-        burstdata = []
-        burstwords = []
+        burstdata = [c_byte]
+        burstwords = [c_short]
 
         burstTrigger = [0x3E,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00]
 
@@ -220,7 +221,7 @@ class ADIS16460():
 
 def GetChecksum(self, burstArray):
     sum = 0
-    for i in range(0,9):	
+    for i in range(0,burstArray.len):	
         sum += (burstArray[i] & 0xFF)
         sum += ((burstArray[i] >> 8) & 0xFF)
 

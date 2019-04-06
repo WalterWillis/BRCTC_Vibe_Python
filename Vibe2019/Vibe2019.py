@@ -16,20 +16,18 @@ try:
 except:
     print("Not on linux, can't access spi and serial library")
     
-    #lower case queue needs to be tested
 def fill(data, q: Queue): #inspired by the drain function
-  while True:
     try:
-      q.put(data,block=true,timeout=0.1)
-    except queue.Full:  # on python 2 use Queue.Empty
-      break
+        q.put(data,block=True,timeout=0.1)
+    except:
+        print("Error in fill")
 
-def drain(q: Queue): #https://stackoverflow.com/questions/21157739/how-to-iterate-through-a-python-queue-queue-with-a-for-loop-instead-of-a-while-l
-  while True:
+def drain(q: Queue): #https://stackoverflow.com/questions/21157739/how-to-iterate-through-a-python-queue-queue-with-a-for-loop-instead-of-a-while-l  
     try:
-      yield q.get_nowait()
-    except queue.Empty:  # on python 2 use Queue.Empty
-      break
+        return q.get(block=True,timeout=1)  
+    except:
+        print("Error in drain")
+
 
 
 # worker - the processor affinty this child works on
@@ -54,17 +52,21 @@ def SPI_THREAD(worker: int, dataQueue: Queue, telemQueue: Queue):
         print(f"FLTR: {gyro.RegRead(gyro.FLTR_CTRL)}")
         print(f"DECR: {gyro.RegRead(gyro.DEC_RATE)}")
 
+        queueList = []
+        listLength = 4000
         while True:
             try:
-                Loop_Values : list = []
+                ADC_Values : list = []
                 for device in ADC_Device:  # Print values per device  
                     values : list = []
                     values.append(device.value, device.voltage, device._channel, datetime.datetime.now().time()) # values, and the channel id for matching
-                    Loop_Values += values
+                    ADC_Values += values
  
-                Loop_Values + gyro.GetBurstData() #[0, 1, 2, 3, 4] + [5, 6, 7, 8, 9] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-                fill(values, dataQueue)
-                fill(values, telemQueue)
+                queueList.append(Loop_Values + gyro.GetBurstData()) #[0, 1, 2, 3, 4] + [5, 6, 7, 8, 9] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+                
+                if(len(queueList) >= listLength):
+                    fill(queueList, dataQueue)
+                    fill(queueList, telemQueue)
 
                 #print(f"Burst Data: {burstArray}") # Print array as string
                 #print(f"Checksums match: {gyro.GetChecksum(burstArray)}") # Verify checksum value
@@ -85,9 +87,7 @@ def TELEMETRY(worker: int, telemQueue: Queue):
 
     #Check each queue to see if they have a size of 4000 or greater
     #If so, send the data via telemetry at a maximum of 4000 data points
-    listLength : int = 4000
     #priority: ADC first, Gyro second
-    telemList : list = [listLength]
     telemString = ""
     cTime : datetime = datetime.datetime.now()
     crashNum : int = 0
@@ -95,17 +95,9 @@ def TELEMETRY(worker: int, telemQueue: Queue):
     ser = serial.Serial("/dev/serial0", 57600, timeout=3.0, write_timeout=3.0)
     while True:
         try:
-            if telemList.len == listLength:
-                try:
-                    ser.write(telemList.encode())
-                    telemList = [listLength]
-                except:
-                    pass
-            else:
-                for data in drain(telemQueue):
-                    telemList.append(data)
-                    if telemList.len == listLength: #Don't go over the list length
-                        break;
+            data = drain(telemQueue)
+            if(data != None):
+                ser.write(data.encode())            
         except:
             #store the number of crashes            
             crashNum += 1
@@ -119,14 +111,51 @@ def TELEMETRY(worker: int, telemQueue: Queue):
                 cTime = datetime.datetime.now()
 
                 #make a log file and include time
-    
+  
+def DATA_HANDLING(worker: int, dataQueue: Queue):
+    p = psutil.Process()   
+    time.sleep(1)
+    p.cpu_affinity([worker])
 
+    itemList : list = []
+    writeCounter : int = 0
+    fileHeader = "adcValue0 , adcVoltage0 , adcChannel0 , date , adcValue1 , adcVoltage1 , adcChannel1 , date , adcValue2 , adcVoltage2 , adcChannel2 , date , gyro_DIAG_STAT, gyro_XGYRO , gyro_YGYRO , gyro_ZGYRO , gyro_XACCEL , gyro_YACCEL , gyro_ZACCEL , gyro_TEMP_OUT , gyro_SMPL_CNTR , gyro_CHECKSUM , date"
+    
+    #Directory should be the date of the test
+    #Add a global variable to a hard-coded directory later such as /home/pi/Desktop
+    directoryName = datetime.datetime.now().strftime("%c")
+    #create dynamically named file
+    fileCounter = 0
+    file = str(fileCounter) + ".txt"
+
+    with open(file, 'a') as f:
+        f.write(fileHeader)
+        f.write("\n")
+
+    while True:
+        #get items from dataQueue
+        data = drain(dataQueue)
+
+        if data != None:
+            with open(file, 'a') as f:
+                f.write("START OF DATA\n")
+                json.dump(fileList, f,  indent=4)
+                f.write("END OF DATA\n")
+            fileList : list = []
+            writeCounter += 1
+
+            #Create a new file after a million datapoints
+            if writeCounter >= 250: #4000 x 250 = 1000000
+                fileCounter += 1
+                file = str(fileCounter) + ".txt"
+
+       
 
 if __name__ == '__main__':
     m = Manager()
     #The queues will hold identical data
-    dataQueue : Queue = m.Queue(maxsize = 6000)
-    telemQueue: Queue = m.Queue(maxsize = 6000)
+    dataQueue : Queue = m.Queue(maxsize = 60)
+    telemQueue: Queue = m.Queue(maxsize = 60)
 
     process_SPI =  Process(target=SPI_THREAD, args=(1, dataQueue, telemQueue))
     process_DataHandler =  Process(target=TELEMETRY, args=(2, dataQueue))

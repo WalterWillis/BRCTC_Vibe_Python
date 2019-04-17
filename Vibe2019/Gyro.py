@@ -1,7 +1,9 @@
 import gpiozero
 import gpiozero.pins.local
 import time
-import spidev
+try:
+    import spidev
+import datetime
 usleep = lambda x: time.sleep(x/1000000.0) #time.sleep works well-enough for microseconds above 20 uS https://stackoverflow.com/questions/1133857/how-accurate-is-pythons-time-sleep
 from gpiozero.pins import SPI
 from ctypes import c_short, c_byte
@@ -196,9 +198,9 @@ class ADIS16460():
         burstwords = [c_short]
 
         burstTrigger = [0x3E,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00, 0x00,0x00]
-
+        
         burstdata = self.SpiDevice.transfer(burstTrigger)
-        cTime = datetime.datetime.now().time()
+        #cTime: datetime = datetime.datetime.now().time()
         #print(f"burst data: {burstdata}")
 
         burstwords.append(((burstdata[2] << 8) | (burstdata[3] & 0xFF))) #DIAG_STAT
@@ -211,7 +213,7 @@ class ADIS16460():
         burstwords.append(((burstdata[16] << 8) | (burstdata[17] & 0xFF))) #TEMP_OUT
         burstwords.append(((burstdata[18] << 8) | (burstdata[19] & 0xFF))) #SMPL_CNTR
         burstwords.append(((burstdata[20] << 8) | (burstdata[21] & 0xFF))) #CHECKSUM
-        burstwords.append(cTime)
+        #burstwords.append(cTime.strftime("%H:%M:%S"))
 
         #print(f"burst words: {burstwords}")
 

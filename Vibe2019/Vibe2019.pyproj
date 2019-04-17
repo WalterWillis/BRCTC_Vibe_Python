@@ -26,6 +26,8 @@
     <Compile Include="Gyro.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="RTC TimeTest.py" />
+    <Compile Include="SDL_DS3231.py" />
     <Compile Include="TestStuff.py">
       <SubType>Code</SubType>
     </Compile>

@@ -99,7 +99,6 @@ def drain(q: Queue): #https://stackoverflow.com/questions/21157739/how-to-iterat
 
 # worker - the processor affinty this child works on
 # childWorker - the processor affinity that will be handed off to another child process
-# summaryQueue - a reference to the queue that the child will use.
 def SPI_THREAD(worker: int, dataQueue: Queue, telemQueue: Queue):
     try:
         p = psutil.Process()
@@ -262,28 +261,28 @@ if __name__ == '__main__':
         try:  
 
             #Must define inside of the loop in order to restart after a crash
-            process1 = Process(target=placein, args=(2, dataQueue, telemQueue))
-            process2 = Process(target=takeout, args=(3, dataQueue, telemQueue))
-            process1.start()
-            process2.start()
+            #process1 = Process(target=placein, args=(2, dataQueue, telemQueue))
+            #process2 = Process(target=takeout, args=(3, dataQueue, telemQueue))
+            #process1.start()
+            #process2.start()
 
-            process1.join()
-            process2.join()
+            #process1.join()
+            #process2.join()
 
-            process1.terminate()
-            process2.terminate()
+            #process1.terminate()
+            #process2.terminate()
 
-            #process_SPI =  Process(target=SPI_THREAD, args=(1, dataQueue, telemQueue))
-            #process_DataHandler =  Process(target=TELEMETRY, args=(2, dataQueue))
-            #process_Telemetry =  Process(target=TELEMETRY, args=(3, telemQueue))
+            process_SPI =  Process(target=SPI_THREAD, args=(1, dataQueue, telemQueue))
+            process_DataHandler =  Process(target=DATA_HANDLING, args=(2, dataQueue))
+            process_Telemetry =  Process(target=TELEMETRY, args=(3, telemQueue))
             
-            #process_SPI.start()
-            #process_Telemetry.start()
-            #process_DataHandler.start()
+            process_SPI.start()
+            process_Telemetry.start()
+            process_DataHandler.start()
 
-            #process_SPI.join()
-            #process_Telemetry.join()
-            #process_DataHandler.join()
+            process_SPI.join()
+            process_Telemetry.join()
+            process_DataHandler.join()
             
 
             print("Finished!")
@@ -292,7 +291,6 @@ if __name__ == '__main__':
         except:
             logger.exception("Error in Main")
             #traceback.print_exc()
-            input()
             try:
                 if(process_SPI.is_alive()):
                     process_SPI.terminate()

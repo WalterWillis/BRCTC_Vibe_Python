@@ -5,8 +5,7 @@
     <ProjectGuid>71490584-2211-4f05-8f2c-dd50e8a9ab33</ProjectGuid>
     <ProjectHome>.</ProjectHome>
     <StartupFile>Vibe2019.py</StartupFile>
-    <SearchPath>
-    </SearchPath>
+    <SearchPath>..\..\..\..\..\..\Program Files (x86)\Microsoft Visual Studio\Shared\Python36_64\Lib\site-packages</SearchPath>
     <WorkingDirectory>.</WorkingDirectory>
     <OutputPath>.</OutputPath>
     <Name>Vibe2019</Name>
@@ -21,12 +20,10 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="DataServices.py">
+    <Compile Include="SpidDevices.py">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="TestStuff.py">
-      <SubType>Code</SubType>
-    </Compile>
+    <Compile Include="SDL_DS3231.py" />
     <Compile Include="Vibe2019.py" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />

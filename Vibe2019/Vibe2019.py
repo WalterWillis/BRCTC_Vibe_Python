@@ -1,155 +1,289 @@
 #Some code gained from https://stackoverflow.com/questions/36172101/designate-specific-cpu-for-a-process-python-multiprocessing
-#Using Pipes will block the code if the thread runs behind, halting further data from being gathered on the main thread.
-import multiprocessing as mp
+
+#imports
+#region
+import multiprocessing
 from multiprocessing import Process, Queue, Pool, Manager
+import queue
 import os
-import TestStuff  as test    
+#import TestStuff  as test    
 import psutil
 import time
+import logging
+
+import datetime
 from functools import partial
 try:
+    import SpiDevices
+    import serial
     import gpiozero.spi_devices
+    import SDL_DS3231
 except:
-    print("Not on linux, can't access spi library")
+    #logger.exception("Error importing linux libraries!")
+    print("Not on linux")
+#endregion
 
-# worker - the processor affinty this child works on
-# childWorker - the processor affinity that will be handed off to another child process
-# summaryQueue - a reference to the queue that the child will use.
-def SPI_THREAD(worker: int, adcQueue: Queue, gyroDataQueue: Queue):
+#globals
+#region
+#global variable; instantiates real time clock
+RTC = SDL_DS3231.SDL_DS3231(1, 0x68)
+try:
+    os.system('sudo rmmod rtc_ds1307')
+except:
+    pass
+
+#Multithreading lock
+lock = multiprocessing.Lock()
+
+#Naming main directory of things
+MainDir = None
+
+try:
+    MainDir = "/home/pi/Desktop/Vibe_" + GetTime().strftime("%c")+"/"
+except:
+    #In windows, we will only except things to be written in the current directory
+    MainDir = "./"
+
+#creating directory if does not exist
+if not os.path.exists(MainDir):
+    os.makedirs(MainDir)
+
+#logger info
+logFileName = MainDir + "Log.txt"
+logging.basicConfig(filename=logFileName, level=logging.DEBUG, format='%(asctime)s %(levelname)s %(name)s %(message)s')
+logger=logging.getLogger(__name__)
+
+#endregion
+
+#shared functions
+#region
+
+#shares a global variable
+def GetTime():
+    counter = 0;
+
+    date : datetime.datetime = None
+    try:          
+        lock.acquire()  
+        date = RTC.read_datetime()
+        time.sleep(2)
+        lock.release()
+    except:            
+        counter += 1
+
+    #if the lock could never acquire, or I2C is down, just get a datetime
+    if date == None:
+        print("Error")
+        date = datetime.datetime.now()
+        logger.info("Could not access RTC, getting system datetime")
+    
+    return date
+
+    
+def fill(data, q: Queue): #inspired by the drain function
+    try:
+        q.put(data,block=True,timeout=0.1)
+    except:
+        logger.exception("Error in fill")
+
+def drain(q: Queue): #https://stackoverflow.com/questions/21157739/how-to-iterate-through-a-python-queue-queue-with-a-for-loop-instead-of-a-while-l  
+    try:
+        return q.get(block=True,timeout=1)  
+    except:
+        logger.exception("Error in drain")
+
+#endregion
+
+#threads
+#region
+
+def SPI_THREAD(worker: int, dataQueue: Queue, telemQueue: Queue):
     try:
         p = psutil.Process()
-        ##print(f"ADC Data Worker #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
-        time.sleep(1)
+        #print(f"ADC Data Worker #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
+        #time.sleep(1)
         p.cpu_affinity([worker])
-        ##print(f"ADC Data Worker #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
+        #print(f"ADC Data Worker #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
+
+        Spi = SpiDevices.SpiHub(0,1,0,0)
         
-        ADC_Device : list = []
-        for pin in range(0,7):
-            ADC_Device.append( gpiozero.spi_devices.MCP3208(channel=pin, device=0) ) # should be channel 0. Will need a variable, or array for all channels used. 
+        ADC_Channels = [SpiDevices.ADCEnum.SINGLE_0, SpiDevices.ADCEnum.SINGLE_1, SpiDevices.ADCEnum.SINGLE_2]
 
-        for i in range(0,200):   
-            for device in ADC_Device:                             
-                print(f"ADC channel is channel {device.channel}", flush=True)
-                print(f"ADC voltage is {device.voltage} volts", flush=True)
-                print(f"ADC value is {device.value}", flush=True)
-                time.sleep(.3)
+        ##read default values
+        #print( f"MSC: {gyro.RegRead(gyro.MSC_CTRL)}")
+        #print(f"FLTR: {gyro.RegRead(gyro.FLTR_CTRL)}")
+        #print(f"DECR: {gyro.RegRead(gyro.DEC_RATE)}")
 
+        queueList = []
+        listLength = 4000
+        while True:
+            try:
+                ADC_Values: list = Spi.ADCGetValues(ADC_Channels) + [GetTime()]
+ 
+                queueList.append(ADC_Values + SpiDevices.GetBurstData()+[GetTime()]) #[0, 1, 2, 3, 4] + [5, 6, 7, 8, 9] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+                
+                if(len(queueList) >= listLength):
+                    fill(queueList, dataQueue)
+                    fill(queueList, telemQueue)
 
-        adcQueue.put("ADC DATA!")     
+                #print(f"Burst Data: {burstArray}") # Print array as string
+                #print(f"Checksums match: {gyro.GetChecksum(burstArray)}") # Verify checksum value
+                #gyro.PrintValues(burstArray) # Print gyro values after scaling
+            except Exception as ex:
+                pass
            
         print("ADC Data Worker Finished")
     except Exception as ex:
-        print("Error in ADC_THREAD")
-        print(ex)
+        logger.exception("Error in ADC_THREAD")
+        raise ex #Throw the error to restart the program.
 
 
-def ADC_HANDLER(worker: int, adcQueue: Queue, adcSummaryQueue: Queue):
-    try:
-        p = psutil.Process()
-        print(f"ADC Data Handler #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
-        time.sleep(1)
-        p.cpu_affinity([worker])
-        print(f"ADC Data Handler #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
+def TELEMETRY(worker: int, telemQueue: Queue):
+    p = psutil.Process()
+    p.cpu_affinity([worker])
 
-        while(True):
-            if(adcQueue.empty() == False):
-                message = adcQueue.get()
-                adcSummaryQueue.put(message)
-                break
-            time.sleep(.5)
+    #Check each queue to see if they have a size of 4000 or greater
+    #If so, send the data via telemetry at a maximum of 4000 data points
+    #priority: ADC first, Gyro second
+    telemString = ""
+    cTime : datetime = GetTime()
+    crashNum : int = 0
+    delta : datetime.timedelta
+    ser = serial.Serial("/dev/serial0", 57600, timeout=3.0, write_timeout=3.0)
+    while True:
+        try:
+            data = drain(telemQueue)
+            if(data != None):
+                ser.write(data.encode())            
+        except:
+            logger.exception("Telemetry Thread has crashed")
+            #store the number of crashes            
+            crashNum += 1
+            delta = GetTime() - cTime
+            if delta.total_seconds() >= 300:
+                logger.info("Telemetry Thread has crashed ", crashNum, " times since the thread began.")
+                cTime = GetTime()
+  
+def DATA_HANDLING(worker: int, dataQueue: Queue):
+    p = psutil.Process()   
+    time.sleep(1)
+    p.cpu_affinity([worker])
 
-        print("ADC Handler Finished")
-    except Exception as ex:
-        print("Error in ADC_Handler")
-        print(ex)
+    itemList : list = []
+    writeCounter : int = 0
+    fileHeader = "adcValue0 , adcVoltage0 , adcChannel0 , date , adcValue1 , adcVoltage1 , adcChannel1 , date , adcValue2 , adcVoltage2 , adcChannel2 , date , gyro_DIAG_STAT, gyro_XGYRO , gyro_YGYRO , gyro_ZGYRO , gyro_XACCEL , gyro_YACCEL , gyro_ZACCEL , gyro_TEMP_OUT , gyro_SMPL_CNTR , gyro_CHECKSUM , date"
+    
+    directoryName = MainDir+"Data/"
+    if not os.path.exists(directoryName):
+        os.makedirs(directoryName)
+    #create dynamically named file
+    fileCounter = 0
+    file = directoryName+str(fileCounter) + ".txt"
 
-def GYRO_HANDLER(worker: int, gyroQueue: Queue, gyroSummaryQueue: Queue):
-    try:
-        p = psutil.Process()
-        print(f"Gyro Data Handler #{worker}: {p}, affinity {p.cpu_affinity()}", flush=True)
-        time.sleep(1)
-        p.cpu_affinity([worker])
-        print(f"Gyro Data Handler #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
+    with open(file, 'a') as f:
+        f.write(fileHeader)
+        f.write("\n")
 
-        while(True):
-            if(gyroQueue.empty() == False):
-                message = gyroQueue.get()
-                gyroSummaryQueue.put(message)
-                break
-            time.sleep(.5)
+    while True:
+        #get items from dataQueue
+        data = drain(dataQueue)
 
-        print("Gyro Handler Finished")
-    except Exception as ex:
-        print("Error in GYRO_Handler")
-        print(ex)
+        if data != None:
+            with open(file, 'a') as f:
+                f.write("START OF DATA\n")
+                json.dump(fileList, f,  indent=4)
+                f.write("END OF DATA\n")
+            fileList : list = []
+            writeCounter += 1
 
-def TELEMETRY(worker: int, toSendQueue: Queue):
-    pass
+            #Create a new file after a million datapoints
+            if writeCounter >= 250: #4000 x 250 = 1000000
+                fileCounter += 1
+                file = directoryName+str(fileCounter) + ".txt"
 
-#--------Test Stuff-------
-def func(a, b):
-    print("hi")
-    return a + b
+#endregion
+ 
+#test threads
+#region 
+def placein(id: int, dataQueue : Queue, telemQueue: Queue):
+    for i in range(0, 100):
+        fill("Hi", dataQueue)
+        f = drain(telemQueue)
+        if f != None and f == "ready":
+            print(f)
+            fill("Hi", dataQueue)
 
-def main():
-    a_args = [1,2,3]
-    second_arg = 1
-    with Pool() as pool:
-        L = pool.starmap(func, [(1, 1), (2, 1), (3, 1)])
-        print(L)
-#--------------------------
+def takeout(id: int, dataQueue: Queue, telemQueue: Queue):
+    counter = 0
+    while counter < 100:
+        s = str(drain(dataQueue))
+        if(s != None and len(s) > 0):
+            print(s)
+            fill("ready", telemQueue)
+            counter +=1
+        else:
+            print("variable s is empty")
+#endregion
 
-
+#Main Thread
+#region 
+#differentiates processes. This is the main process
 if __name__ == '__main__':
-    #test.StartCoreCalculations()
-    #input()
-    #test.StartMyCoreTest()
-
-    #The main thread should be the data handler for the sake of efficiency and programmatic simplicity
-
-    #main()
+    try:
+        multiprocessing.set_start_method('spawn')
+    except:
+        logger.exception("Setting start method has crashed")
     m = Manager()
-    adcDataQueue = m.Queue()
-    gyroDataQueue = m.Queue()
-    adcSummaryQueue = m.Queue()
-    gyroSummaryQueue = m.Queue()
-    summaryQueueSender = m.Queue()
+    #The queues will hold identical data
+    dataQueue : Queue = m.Queue(maxsize = 60)
+    telemQueue: Queue = m.Queue(maxsize = 60)       
 
-    process_SPI =  Process(target=SPI_THREAD, args=(1, adcDataQueue, gyroDataQueue))
+    while True:
+        try:  
+            ###########################TEST CODE####################################
+            #Must define inside of the loop in order to restart after a crash
+            #process1 = Process(target=placein, args=(2, dataQueue, telemQueue))
+            #process2 = Process(target=takeout, args=(3, dataQueue, telemQueue))
+            #process1.start()
+            #process2.start()
 
-    p1 = Process(target=GYRO_HANDLER, args=(2, gyroDataQueue, gyroSummaryQueue))
-    p2 = Process(target=ADC_HANDLER, args=(3, adcDataQueue, adcSummaryQueue))
+            #process1.join()
+            #process2.join()
 
-    try:  
-        process_SPI.start()
-        p1.start()
-        p2.start()
-        
-    except Exception as ex:
-        print("Error in Main")
-        print(ex)
+            #process1.terminate()
+            #process2.terminate()
+            ###########################TEST CODE####################################
 
-    #Breaks the loop
-    gyroReady = False
-    adcReady = False
+            process_SPI =  Process(target=SPI_THREAD, args=(1, dataQueue, telemQueue))
+            process_DataHandler =  Process(target=DATA_HANDLING, args=(2, dataQueue))
+            process_Telemetry =  Process(target=TELEMETRY, args=(3, telemQueue))
+            
+            process_SPI.start()
+            process_Telemetry.start()
+            process_DataHandler.start()
 
-    while(not gyroReady and not adcReady):
+            process_SPI.join()
+            process_Telemetry.join()
+            process_DataHandler.join()
+            
 
-        gyroReady = gyroSummaryQueue.empty()
-        adcReady = adcSummaryQueue.empty()
+            print("Finished!")
 
-        if(gyroReady):
-            print("Message from Gyro Summary Queue")
-            print(gyroSummaryQueue.get())
 
-        if(adcReady):
-            print("Message from ADC Summary Queue")
-            print(adcSummaryQueue.get())       
+        except:
+            logger.exception("Error in Main")
+            #traceback.print_exc()
+            try:
+                if(process_SPI.is_alive()):
+                    process_SPI.terminate()
+                if(process_Telemetry.is_alive()):
+                    process_Telemetry.terminate()
+            except:
+                logger.exception("Error terminating processes")
+                #A catastrophic failure is likely to have occurred if we are here. 
+                #We can assume that all resources will be removed when returning through the loop.
 
-        time.sleep(.5)
+        time.sleep(20)
+    
 
-    p1.join()
-    p2.join()
-    process_SPI.join()
-    print("Done")
-
+#endregion

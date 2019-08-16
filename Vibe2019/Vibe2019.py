@@ -14,7 +14,7 @@ import logging
 import datetime
 from functools import partial
 try:
-    import Gyro
+    import SpiDevices
     import serial
     import gpiozero.spi_devices
     import SDL_DS3231
@@ -97,8 +97,6 @@ def drain(q: Queue): #https://stackoverflow.com/questions/21157739/how-to-iterat
 #threads
 #region
 
-# worker - the processor affinty this child works on
-# childWorker - the processor affinity that will be handed off to another child process
 def SPI_THREAD(worker: int, dataQueue: Queue, telemQueue: Queue):
     try:
         p = psutil.Process()
@@ -107,9 +105,9 @@ def SPI_THREAD(worker: int, dataQueue: Queue, telemQueue: Queue):
         p.cpu_affinity([worker])
         #print(f"ADC Data Worker #{worker}: Set affinity to {worker}, affinity now {p.cpu_affinity()}", flush=True)
 
-        Spi = Gyro.SpiHub(0,1,0,0)
+        Spi = SpiDevices.SpiHub(0,1,0,0)
         
-        ADC_Channels = [Gyro.ADCEnum.SINGLE_0, Gyro.ADCEnum.SINGLE_1, Gyro.ADCEnum.SINGLE_2]
+        ADC_Channels = [SpiDevices.ADCEnum.SINGLE_0, SpiDevices.ADCEnum.SINGLE_1, SpiDevices.ADCEnum.SINGLE_2]
 
         ##read default values
         #print( f"MSC: {gyro.RegRead(gyro.MSC_CTRL)}")
@@ -122,7 +120,7 @@ def SPI_THREAD(worker: int, dataQueue: Queue, telemQueue: Queue):
             try:
                 ADC_Values: list = Spi.ADCGetValues(ADC_Channels) + [GetTime()]
  
-                queueList.append(ADC_Values + gyro.GetBurstData()+[GetTime()]) #[0, 1, 2, 3, 4] + [5, 6, 7, 8, 9] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+                queueList.append(ADC_Values + SpiDevices.GetBurstData()+[GetTime()]) #[0, 1, 2, 3, 4] + [5, 6, 7, 8, 9] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
                 
                 if(len(queueList) >= listLength):
                     fill(queueList, dataQueue)
@@ -165,17 +163,6 @@ def TELEMETRY(worker: int, telemQueue: Queue):
             if delta.total_seconds() >= 300:
                 logger.info("Telemetry Thread has crashed ", crashNum, " times since the thread began.")
                 cTime = GetTime()
-            #we took out the code below because the logger (above) can handle all of it in one foul swoop
-            #finally:
-            #check current time against a time variable
-            #every five minutes replace the value of the time variable
-            #send the number of crashes every 5 minutes
-            #delta = GetTime() - cTime
-            #if delta.total_seconds() >= 300:
-                #print("Telemetry Thread has crashed ", crashNum, " times since thread began.")
-                #cTime = GetTime()
-
-                #make a log file and include time
   
 def DATA_HANDLING(worker: int, dataQueue: Queue):
     p = psutil.Process()   
@@ -253,7 +240,7 @@ if __name__ == '__main__':
 
     while True:
         try:  
-
+            ###########################TEST CODE####################################
             #Must define inside of the loop in order to restart after a crash
             #process1 = Process(target=placein, args=(2, dataQueue, telemQueue))
             #process2 = Process(target=takeout, args=(3, dataQueue, telemQueue))
@@ -265,6 +252,7 @@ if __name__ == '__main__':
 
             #process1.terminate()
             #process2.terminate()
+            ###########################TEST CODE####################################
 
             process_SPI =  Process(target=SPI_THREAD, args=(1, dataQueue, telemQueue))
             process_DataHandler =  Process(target=DATA_HANDLING, args=(2, dataQueue))

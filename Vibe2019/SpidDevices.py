@@ -8,92 +8,6 @@ from gpiozero.pins import SPI
 from ctypes import c_short, c_byte, c_uint
 from enum import Enum
 
-class UnknownGyro(gpiozero.spi_devices.SPIDevice):
-    """
-    Represents an analog input device connected to SPI (serial interface).
-
-    Typical analog input devices are `analog to digital converters`_ (ADCs).
-    Several classes are provided for specific ADC chips, including
-    :class:`MCP3004`, :class:`MCP3008`, :class:`MCP3204`, and :class:`MCP3208`.
-
-    The following code demonstrates reading the first channel of an MCP3008
-    chip attached to the Pi's SPI pins::
-
-        from gpiozero import MCP3008
-
-        pot = MCP3008(0)
-        print(pot.value)
-
-    The :attr:`value` attribute is normalized such that its value is always
-    between 0.0 and 1.0 (or in special cases, such as differential sampling,
-    -1 to +1). Hence, you can use an analog input to control the brightness of
-    a :class:`PWMLED` like so::
-
-        from gpiozero import MCP3008, PWMLED
-
-        pot = MCP3008(0)
-        led = PWMLED(17)
-        led.source = pot.values
-
-    The :attr:`voltage` attribute reports values between 0.0 and *max_voltage*
-    (which defaults to 3.3, the logic level of the GPIO pins).
-
-    .. _analog to digital converters: https://en.wikipedia.org/wiki/Analog-to-digital_converter
-    """
-
-    def __init__(self, max_voltage=3.3, **spi_args):
-        self._min_value = -(2 ** bits)
-        self._range = 2 ** (bits + 1) - 1
-        test = gpiozero.pins.spi.SPISoftwareBus(1,2,3)
-        test.clock
-        if max_voltage <= 0:
-            raise InputDeviceError('max_voltage must be positive')
-        self._max_voltage = float(max_voltage)
-        super(Gyro, self).__init__(shared=True, **spi_args)
-
-
-    def _read(self):
-        raise NotImplementedError
-
-    @property
-    def value(self):
-        """
-        The current value read from the device, scaled to a value between 0 and
-        1 (or -1 to +1 for certain devices operating in differential mode).
-        """
-        return (2 * (self._read() - self._min_value) / self._range) - 1
-
-    @property
-    def raw_value(self):
-        """
-        The raw value as read from the device.
-        """
-        return self._read()
-
-    @property
-    def max_voltage(self):
-        """
-        The voltage required to set the device's value to 1.
-        """
-        return self._max_voltage
-
-    @property
-    def voltage(self):
-        """
-        The current voltage read from the device. This will be a value between
-        0 and the *max_voltage* parameter specified in the constructor.
-        """
-        return self.value * self._max_voltage
-
-
-#This one looks to inherit from gpiozero.pins.SPI, like InheritedGyro
-#requires SpiDev to be initialized. Property: _interface is an instance of SpiDev
-    #SpiDev is require to use transfer
-#https://github.com/juchong/ADIS16460-Arduino-Teensy/blob/master/ADIS16460/
-class OrigGyro(gpiozero.pins.local.LocalPiHardwareSPI):
-    def __init__(self, factory, port, device):
-        super(OrigGyro, self).__init__()
-
 class ADIS16460Enum(Enum):
      # User Register Memory Map from Table 6
     FLASH_CNT = 0x00 #Flash memory write count
@@ -157,6 +71,7 @@ class ADCEnum(Enum):
     DIFF_3PN = 0b0110,  # differential channel 3 (input 6+,7-) */
     DIFF_3NP = 0b0111   # differential channel 3 (input 6-,7+) */
 
+    #Currently broken. Gpiozero for multi-spi use is unclear and over-engineered. Recommend using spidev instead. Use working C++ code instead.
 class SpiHub():
    
     GyroPort: int
@@ -239,17 +154,30 @@ class SpiHub():
         burstdata = self.SpiDevice.transfer(burstTrigger)
         #cTime: datetime = datetime.datetime.now().time()
         #print(f"burst data: {burstdata}")
+        
+        #This is old
+        #burstwords.append(((burstdata[2] << 8) | (burstdata[3] & 0xFF))) #DIAG_STAT
+        #burstwords.append(((burstdata[4] << 8) | (burstdata[5] & 0xFF))) #XGYRO
+        #burstwords.append(((burstdata[6] << 8) | (burstdata[7] & 0xFF))) #YGYRO
+        #burstwords.append(((burstdata[8] << 8) | (burstdata[9] & 0xFF))) #ZGYRO
+        #burstwords.append(((burstdata[10] << 8) | (burstdata[11] & 0xFF))) #XACCEL
+        #burstwords.append(((burstdata[12] << 8) | (burstdata[13] & 0xFF))) #YACCEL
+        #burstwords.append(((burstdata[14] << 8) | (burstdata[15] & 0xFF))) #ZACCEL
+        #burstwords.append(((burstdata[16] << 8) | (burstdata[17] & 0xFF))) #TEMP_OUT
+        #burstwords.append(((burstdata[18] << 8) | (burstdata[19] & 0xFF))) #SMPL_CNTR
+        #burstwords.append(((burstdata[20] << 8) | (burstdata[21] & 0xFF))) #CHECKSUM
 
-        burstwords.append(((burstdata[2] << 8) | (burstdata[3] & 0xFF))) #DIAG_STAT
-        burstwords.append(((burstdata[4] << 8) | (burstdata[5] & 0xFF))) #XGYRO
-        burstwords.append(((burstdata[6] << 8) | (burstdata[7] & 0xFF))) #YGYRO
-        burstwords.append(((burstdata[8] << 8) | (burstdata[9] & 0xFF))) #ZGYRO
-        burstwords.append(((burstdata[10] << 8) | (burstdata[11] & 0xFF))) #XACCEL
-        burstwords.append(((burstdata[12] << 8) | (burstdata[13] & 0xFF))) #YACCEL
-        burstwords.append(((burstdata[14] << 8) | (burstdata[15] & 0xFF))) #ZACCEL
-        burstwords.append(((burstdata[16] << 8) | (burstdata[17] & 0xFF))) #TEMP_OUT
-        burstwords.append(((burstdata[18] << 8) | (burstdata[19] & 0xFF))) #SMPL_CNTR
-        burstwords.append(((burstdata[20] << 8) | (burstdata[21] & 0xFF))) #CHECKSUM
+        #Endianness requires the bytes to be inverted
+        burstwords.append(((burstdata[3] << 8) | (burstdata[2] & 0xFF))) #DIAG_STAT
+        burstwords.append(((burstdata[5] << 8) | (burstdata[4] & 0xFF))) #XGYRO
+        burstwords.append(((burstdata[7] << 8) | (burstdata[6] & 0xFF))) #YGYRO
+        burstwords.append(((burstdata[9] << 8) | (burstdata[8] & 0xFF))) #ZGYRO
+        burstwords.append(((burstdata[11] << 8) | (burstdata[10] & 0xFF))) #XACCEL
+        burstwords.append(((burstdata[13] << 8) | (burstdata[12] & 0xFF))) #YACCEL
+        burstwords.append(((burstdata[15] << 8) | (burstdata[14] & 0xFF))) #ZACCEL
+        burstwords.append(((burstdata[17] << 8) | (burstdata[16] & 0xFF))) #TEMP_OUT
+        burstwords.append(((burstdata[19] << 8) | (burstdata[18] & 0xFF))) #SMPL_CNTR
+        burstwords.append(((burstdata[21] << 8) | (burstdata[20] & 0xFF))) #CHECKSUM
         #burstwords.append(cTime.strftime("%H:%M:%S"))
 
         #print(f"burst words: {burstwords}")
@@ -307,22 +235,3 @@ def PrintGyroStuff(burstArray):
     print(f"Y Axis: {burstArray[5] * .00025}")
     print(f"Z Axis: {burstArray[6] * .00025}")
         
-
-
-#class InheritedGyro(gpiozero.pins.SPI):   
-#    def __init__(self, factory, port, device):
-#        super(InheritedGyro, self).__init__()
-       
-
-def example():
-    factory = gpiozero.devices._default_pin_factory()
-    inheritedGyro = InheritedGyro(factory,0,0) # I believe port 0 is the default port
-    inheritedGyro.transfer(None) # does nothing. needs to be overwritten.
-
-    list = list(20)
-    origGyro = OrigGyro(factory,0,0)
-    origGyro._set_bits_per_word(16)
-    origGyro.clock_mode(3)
-    origGyro.lsb_first(False)
-    origGyro._interface #No library available on windows. I think members of this object will have the spi speed getter/setters
-    newlist = origGyro.transfer(list) # I think this works like the transfer function from wiring pi. Toss in a list of values, and an equal list of responses is returned.
